@@ -4,23 +4,36 @@ import torch.nn.functional as F
 from torchvision.models import resnet34, resnet50
 
 
+# 双卷积块，添加残差连接
 class DoubleConv(nn.Module):
-    """(convolution => [BN] => ReLU) * 2"""
     def __init__(self, in_channels, out_channels, mid_channels=None):
-        super().__init__()
+        super(DoubleConv, self).__init__()
         if not mid_channels:
             mid_channels = out_channels
-        self.double_conv = nn.Sequential(
-            nn.Conv2d(in_channels, mid_channels, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(mid_channels),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(mid_channels, out_channels, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True)
-        )
+        self.conv1 = nn.Conv2d(in_channels, mid_channels, kernel_size=3, padding=1)
+        self.bn1 = nn.BatchNorm2d(mid_channels)
+        self.relu = nn.ReLU(inplace=True)
+        self.conv2 = nn.Conv2d(mid_channels, out_channels, kernel_size=3, padding=1)
+        self.bn2 = nn.BatchNorm2d(out_channels)
+        
+        # 残差连接适配：如果输入输出通道一致，直接残差相加；否则用 1x1 卷积调整通道
+        self.shortcut = nn.Sequential()
+        if in_channels != out_channels:
+            self.shortcut = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0)
 
     def forward(self, x):
-        return self.double_conv(x)
+        residual = x  # 保存输入，用于残差连接
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.conv2(x)
+        x = self.bn2(x)
+        
+        # 残差连接：shortcut 调整通道后与卷积结果相加
+        residual = self.shortcut(residual)
+        x += residual  
+        x = self.relu(x)
+        return x
 
 
 class Down(nn.Module):
